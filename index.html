@@ -165,6 +165,7 @@ tbody tr:hover td{background:#FAFAFE}
     <div class="ns" id="ns-adm" style="display:none">Administração</div>
     <button class="ni" id="nav-rel" style="display:none" onclick="showPage('relatorios',this)"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Relatórios</button>
     <button class="ni" id="nav-users" style="display:none" onclick="showPage('usuarios',this)"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="23" y1="11" x2="17" y2="11"/><line x1="20" y1="8" x2="20" y2="14"/></svg>Usuários<span class="tag">Admin</span></button>
+    <button class="ni" id="nav-checklist" style="display:none" onclick="showPage('checklist',this);renderChecklist()"><svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Checklist<span class="tag">Admin</span></button>
   </div>
 </nav>
 
@@ -262,9 +263,22 @@ tbody tr:hover td{background:#FAFAFE}
   <div class="con"><div class="tw"><table><thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Senha</th><th>Ações</th></tr></thead><tbody id="u-tbody"></tbody></table></div></div>
 </div>
 
-</div></div></div>
+<div id="p-checklist" class="page">
+  <div class="tb"><div class="pt">Editar Checklist</div>
+    <div class="tbr">
+      <button class="btn" onclick="resetChecklist()">↺ Restaurar padrão</button>
+      <button class="btn btn-p" onclick="openModalNovaSecao()"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Nova seção</button>
+    </div>
+  </div>
+  <div class="con">
+    <div style="background:var(--amber);color:var(--at);border-radius:var(--r);padding:10px 13px;font-size:12px;margin-bottom:14px">
+      ⚠️ Alterações no checklist afetam todos os novos feedbacks. Feedbacks já criados mantêm a estrutura original.
+    </div>
+    <div id="cl-editor"></div>
+  </div>
+</div>
 
-<div id="mod-fb" class="mo" style="display:none" onclick="closeFbMod(event)">
+ class="mo" style="display:none" onclick="closeFbMod(event)">
   <div class="mb" onclick="event.stopPropagation()">
     <div class="mh"><span id="mfb-title">Feedback</span><button class="mc" onclick="closeFbMod()">✕</button></div>
     <div id="mfb-body"></div>
@@ -402,6 +416,7 @@ async function startSession(){
   document.getElementById('nav-novo').style.display=isG?'':'none';
   document.getElementById('nav-rel').style.display=isG?'':'none';
   document.getElementById('nav-users').style.display=isG?'':'none';
+  document.getElementById('nav-checklist').style.display=isG?'':'none';
   document.getElementById('ns-adm').style.display=isG?'':'none';
   await loadAll();
   showPage('dashboard', document.querySelector('.ni'));
@@ -866,8 +881,147 @@ async function delUser(id){
 }
 
 // ─── HELPERS ────────────────────────────────────────────────────────
+// ─── EDITOR DE CHECKLIST ─────────────────────────────────────────────
+const CL_DEFAULT = JSON.parse(JSON.stringify(CL)); // backup do padrão
+
+function loadCL(){
+  try{const d=localStorage.getItem('eqa_cl');if(d){const parsed=JSON.parse(d);CL.length=0;parsed.forEach(s=>CL.push(s));}}catch(e){}
+}
+function saveCL(){localStorage.setItem('eqa_cl',JSON.stringify(CL));}
+
+function renderChecklist(){
+  document.getElementById('cl-editor').innerHTML=CL.map((sec,si)=>`
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700">${sec.nome}</div>
+          <div style="font-size:11px;color:var(--tm);margin-top:2px">${sec.tipo||'Sem tipo'} · Peso total: ${sec.peso}</div>
+        </div>
+        <button class="btn" style="padding:4px 10px;font-size:11px" onclick="openEditSecao(${si})">Editar seção</button>
+        <button class="btn btn-p" style="padding:4px 10px;font-size:11px" onclick="openModalNovoItem(${si})">+ Item</button>
+        <button class="btn btn-d" style="padding:4px 10px;font-size:11px" onclick="delSecao(${si})">Remover</button>
+      </div>
+      <div style="border:1px solid var(--bor);border-radius:var(--r);overflow:hidden">
+        ${sec.itens.map((it,ii)=>`
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bor);font-size:12px;${ii===sec.itens.length-1?'border-bottom:none':''}">
+            <span style="flex:1">${it.nome}</span>
+            <span class="badge ${it.peso?'bp':'ba'}" style="min-width:70px;justify-content:center">${it.peso?'Peso: '+it.peso:'⚠ Crítico'}</span>
+            <button class="btn" style="padding:3px 8px;font-size:10px" onclick="openEditItem(${si},${ii})">Editar</button>
+            <button class="btn btn-d" style="padding:3px 8px;font-size:10px" onclick="delItem(${si},${ii})">Remover</button>
+          </div>`).join('')}
+        ${sec.itens.length===0?'<div class="empty">Nenhum item nesta seção.</div>':''}
+      </div>
+    </div>`).join('');
+}
+
+function openEditSecao(si){
+  const sec=CL[si];
+  openModal2('Editar seção',`
+    <div class="fr"><label>Nome da seção</label><input type="text" id="es-nome" value="${sec.nome}"></div>
+    <div class="fr"><label>Tipo / Descrição</label><input type="text" id="es-tipo" value="${sec.tipo||''}" placeholder="Ex: Procedimento — Erro Crítico"></div>
+    <div class="fr"><label>Peso total da seção</label><input type="number" id="es-peso" value="${sec.peso}" min="1" max="100"></div>`,
+  `saveSecao(${si})`);
+}
+function saveSecao(si){
+  CL[si].nome=document.getElementById('es-nome').value.trim()||CL[si].nome;
+  CL[si].tipo=document.getElementById('es-tipo').value.trim();
+  CL[si].peso=parseInt(document.getElementById('es-peso').value)||CL[si].peso;
+  saveCL();renderChecklist();closeMod2();showToast('Seção atualizada!');
+}
+function delSecao(si){
+  if(!confirm(`Remover a seção "${CL[si].nome}" e todos os seus itens?`))return;
+  CL.splice(si,1);saveCL();renderChecklist();showToast('Seção removida!');
+}
+
+function openModalNovaSecao(){
+  openModal2('Nova seção',`
+    <div class="fr"><label>Nome da seção</label><input type="text" id="ns-nome" placeholder="Ex: Empatia"></div>
+    <div class="fr"><label>Tipo / Descrição</label><input type="text" id="ns-tipo" placeholder="Ex: Experiência do Cliente"></div>
+    <div class="fr"><label>Peso total</label><input type="number" id="ns-peso" value="10" min="1" max="100"></div>`,
+  'saveNovaSecao()');
+}
+function saveNovaSecao(){
+  const nome=document.getElementById('ns-nome').value.trim();
+  if(!nome){showToast('Preencha o nome!');return;}
+  CL.push({id:'sec_'+Date.now(),nome,tipo:document.getElementById('ns-tipo').value.trim(),peso:parseInt(document.getElementById('ns-peso').value)||10,itens:[]});
+  saveCL();renderChecklist();closeMod2();showToast('Seção adicionada!');
+}
+
+function openModalNovoItem(si){
+  openModal2('Novo item',`
+    <div class="fr"><label>Nome do item</label><input type="text" id="ni-nome" placeholder="Descreva o critério..."></div>
+    <div class="fr"><label>Tipo</label><select id="ni-tipo" onchange="togglePeso(this)">
+      <option value="peso">Com peso (erro não crítico)</option>
+      <option value="critico">Crítico (zera a seção)</option>
+    </select></div>
+    <div class="fr" id="ni-peso-row"><label>Peso do item</label><input type="number" id="ni-peso" value="5" min="1" max="100"></div>`,
+  `saveNovoItem(${si})`);
+}
+function openEditItem(si,ii){
+  const it=CL[si].itens[ii];
+  openModal2('Editar item',`
+    <div class="fr"><label>Nome do item</label><input type="text" id="ni-nome" value="${it.nome}"></div>
+    <div class="fr"><label>Tipo</label><select id="ni-tipo" onchange="togglePeso(this)">
+      <option value="peso"${it.peso?' selected':''}>Com peso (erro não crítico)</option>
+      <option value="critico"${!it.peso?' selected':''}>Crítico (zera a seção)</option>
+    </select></div>
+    <div class="fr" id="ni-peso-row" style="${!it.peso?'display:none':''}"><label>Peso</label><input type="number" id="ni-peso" value="${it.peso||5}" min="1" max="100"></div>`,
+  `saveEditItem(${si},${ii})`);
+}
+function togglePeso(sel){
+  document.getElementById('ni-peso-row').style.display=sel.value==='critico'?'none':'';
+}
+function saveNovoItem(si){
+  const nome=document.getElementById('ni-nome').value.trim();
+  if(!nome){showToast('Preencha o nome!');return;}
+  const tipo=document.getElementById('ni-tipo').value;
+  const peso=tipo==='critico'?null:parseInt(document.getElementById('ni-peso').value)||5;
+  CL[si].itens.push({id:'it_'+Date.now(),nome,peso});
+  saveCL();renderChecklist();closeMod2();showToast('Item adicionado!');
+}
+function saveEditItem(si,ii){
+  const nome=document.getElementById('ni-nome').value.trim();
+  if(!nome){showToast('Preencha o nome!');return;}
+  const tipo=document.getElementById('ni-tipo').value;
+  const peso=tipo==='critico'?null:parseInt(document.getElementById('ni-peso').value)||5;
+  CL[si].itens[ii]={...CL[si].itens[ii],nome,peso};
+  saveCL();renderChecklist();closeMod2();showToast('Item atualizado!');
+}
+function delItem(si,ii){
+  if(!confirm('Remover este item?'))return;
+  CL[si].itens.splice(ii,1);saveCL();renderChecklist();showToast('Item removido!');
+}
+function resetChecklist(){
+  if(!confirm('Restaurar o checklist para o padrão original? Todas as alterações serão perdidas.'))return;
+  CL.length=0;CL_DEFAULT.forEach(s=>CL.push(JSON.parse(JSON.stringify(s))));
+  localStorage.removeItem('eqa_cl');renderChecklist();showToast('Checklist restaurado!');
+}
+
+// Modal secundário para edição de checklist
+function openModal2(title,body,saveFn){
+  let m=document.getElementById('mod2');
+  if(!m){
+    m=document.createElement('div');m.id='mod2';m.className='mo';m.style.zIndex='200';
+    m.innerHTML=`<div class="mb" style="width:480px" onclick="event.stopPropagation()">
+      <div class="mh"><span id="m2-title"></span><button class="mc" onclick="closeMod2()">✕</button></div>
+      <div id="m2-body"></div>
+      <div class="mfoot"><button class="btn" onclick="closeMod2()">Cancelar</button><button class="btn btn-p" id="m2-save">Salvar</button></div>
+    </div>`;
+    m.addEventListener('click',e=>{if(e.target===m)closeMod2();});
+    document.body.appendChild(m);
+  }
+  document.getElementById('m2-title').textContent=title;
+  document.getElementById('m2-body').innerHTML=body;
+  document.getElementById('m2-save').onclick=new Function(saveFn);
+  m.style.display='flex';
+  setTimeout(()=>{const f=m.querySelector('input');if(f)f.focus();},100);
+}
+function closeMod2(){const m=document.getElementById('mod2');if(m)m.style.display='none';}
+
+// Carregar checklist customizado ao iniciar
+loadCL();
+
 function showPage(p,btn){
-  document.querySelectorAll('.page').forEach(e=>e.classList.remove('active'));
   document.querySelectorAll('.ni').forEach(e=>e.classList.remove('active'));
   document.getElementById('p-'+p).classList.add('active');
   if(btn)btn.classList.add('active');
